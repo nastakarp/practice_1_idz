@@ -23,6 +23,8 @@ class RoseAnimation:
         self.obj_color = "red"
         self.path_color = "blue"
         self.obj_style = "solid"
+        self.rotation_angle = 0  # Угол вращения объекта
+        self.rotation_speed = 0  # Скорость вращения объекта
 
         self.main_frame = tk.Frame(root)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -61,22 +63,24 @@ class RoseAnimation:
         self.repeat_entry = self.add_labeled_entry("Число повторов:", "0")
         self.direction_combo = self.add_labeled_combobox("Направление:", ["по часовой", "против часовой"], "по часовой")
 
+        # Добавлен элемент управления для скорости вращения
+        self.rotation_speed_entry = self.add_labeled_entry("Скорость вращения:", "0")
+
         self.pent_width_entry = self.add_labeled_entry("Ширина фигуры:", "40")
         self.pent_height_entry = self.add_labeled_entry("Высота фигуры:", "30")
 
-        # Только две привязки
         self.anchor_combo = self.add_labeled_combobox(
             "Привязка:", ["центр", "правая вершина"], "центр"
         )
 
-    def add_labeled_entry(self, text, default, callback=None):  # Добавляем параметр callback
+    def add_labeled_entry(self, text, default, callback=None):
         frame = tk.Frame(self.control_frame)
         frame.pack(fill=tk.X, pady=2)
         tk.Label(frame, text=text).pack(side=tk.LEFT)
         entry = tk.Entry(frame, width=7)
         entry.insert(0, default)
         entry.pack(side=tk.RIGHT)
-        if callback:  # Если передан callback, привязываем его к изменению текста
+        if callback:
             entry.bind("<KeyRelease>", lambda e: callback())
         return entry
 
@@ -104,7 +108,7 @@ class RoseAnimation:
         self.canvas.delete("rose")
         style = self.path_style_combo.get()
         dash = self.get_dash_pattern(style)
-        path_width = self.get_float(self.path_width_entry, 2)  # Получаем толщину из поля ввода
+        path_width = self.get_float(self.path_width_entry, 2)
 
         points = []
         for phi in np.linspace(0, 2 * pi, 300):
@@ -134,6 +138,16 @@ class RoseAnimation:
         except ValueError:
             return default
 
+    def rotate_point(self, point, center, angle):
+        """Вращает точку вокруг центра на заданный угол"""
+        ox, oy = center
+        px, py = point
+
+        qx = ox + cos(angle) * (px - ox) - sin(angle) * (py - oy)
+        qy = oy + sin(angle) * (px - ox) + cos(angle) * (py - oy)
+
+        return qx, qy
+
     def get_pentagon_points(self, x, y, width=40, height=30, anchor="центр"):
         half_w = width / 2
         half_h = height / 2
@@ -141,7 +155,6 @@ class RoseAnimation:
         if anchor == "центр":
             cx, cy = x, y
         elif anchor == "правая вершина":
-            # Центр фигуры смещается так, чтобы правая выступающая вершина шла по траектории
             cx = x - (half_w + width * 0.6)
             cy = y
         else:
@@ -154,7 +167,23 @@ class RoseAnimation:
         top_right = (cx + half_w, cy - half_h)
         right_peak = (cx + half_w + width * 0.6, cy)
 
-        return [*top_left, *bottom_left, *bottom_right, *right_peak, *top_right]
+        points = [top_left, bottom_left, bottom_right, right_peak, top_right]
+
+        # Применяем вращение, если скорость вращения не нулевая
+        if self.rotation_speed != 0:
+            center = (cx, cy)
+            rotated_points = []
+            for point in points:
+                rotated_point = self.rotate_point(point, center, self.rotation_angle)
+                rotated_points.append(rotated_point)
+            points = rotated_points
+
+        # Преобразуем список точек в плоский список координат
+        flat_points = []
+        for point in points:
+            flat_points.extend(point)
+
+        return flat_points
 
     def update_animation(self):
         if self.animation_id is None:
@@ -165,6 +194,10 @@ class RoseAnimation:
         self.step = self.get_float(self.speed_entry, 0.05)
         self.direction = 1 if self.direction_combo.get() == "по часовой" else -1
         self.max_repeats = int(self.repeat_entry.get()) if self.repeat_entry.get().isdigit() else 0
+
+        # Обновляем скорость вращения
+        self.rotation_speed = self.get_float(self.rotation_speed_entry, 0)
+        self.rotation_angle += self.rotation_speed * pi / 180  # Преобразуем градусы в радианы
 
         # Пульсация
         self.pulse_min = self.get_float(self.pulse_min_entry, 20)
@@ -221,6 +254,7 @@ class RoseAnimation:
         if self.animation_id is None:
             self.repeats = 0
             self.t = 0
+            self.rotation_angle = 0  # Сбрасываем угол вращения
             self.animation_id = self.root.after(0, self.update_animation)
 
     def stop_animation(self):
